@@ -6,7 +6,106 @@
     <title>SCL-90 症状自评量表 | 心理健康评估</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// === 验证系统开始 ===
+const AUTH_CONFIG = {
+    SECRET_KEY: "MY_SCL90_SHOP_2024" // 必须与生成器一致
+};
+
+// 页面加载时运行
+document.addEventListener("DOMContentLoaded", function() {
+    checkLock(); // 检查是否需要锁住页面
+});
+
+function checkLock() {
+    const unlockTime = localStorage.getItem("scl90_unlock_time");
+    const modal = document.getElementById("authModal");
+    
+    // 如果有记录，且在24小时内，就不显示弹窗
+    if (unlockTime) {
+        const passed = (new Date().getTime() - parseInt(unlockTime)) / (1000 * 60 * 60);
+        if (passed < 24) return; 
+    }
+    // 否则显示弹窗
+    modal.classList.add("show");
+}
+
+function verifyRedeemCode() {
+    const input = document.getElementById("redeemCode");
+    const code = input.value.trim();
+    
+    // 万能后门：输入12020000直接进（你自己测试用）
+    if(code === "12020000") { unlock(); return; }
+
+    // 算法验证
+    if (code.length === 8 && checkSignature(code)) {
+        unlock();
+    } else {
+        alert("兑换码无效！");
+        input.value = "";
+        document.querySelector(".auth-card").classList.add("shake");
+        setTimeout(()=>document.querySelector(".auth-card").classList.remove("shake"), 500);
+    }
+}
+
+function checkSignature(code) {
+    const randomPart = code.substring(0, 4);
+    const signPart = code.substring(4, 8);
+    const secret = AUTH_CONFIG.SECRET_KEY;
+    
+    // 重复生成器的算法
+    let str = randomPart + secret;
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        let char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; 
+    }
+    let calculatedSign = Math.abs(hash).toString();
+    while (calculatedSign.length < 4) calculatedSign = "0" + calculatedSign;
+    
+    // 核心比对：算出来的尾号 == 输入的尾号
+    return calculatedSign.substring(calculatedSign.length - 4) === signPart;
+}
+
+function unlock() {
+    alert("验证成功！24小时内有效。");
+    localStorage.setItem("scl90_unlock_time", new Date().getTime());
+    document.getElementById("authModal").classList.remove("show");
+}
+// === 验证系统结束 ===
+</script>
     <style>
+/* === 新增：验证弹窗样式 === */
+.modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background-color: rgba(0, 0, 0, 0.4); /* 增加模糊度，让背景看起来像磨砂玻璃 */
+    backdrop-filter: blur(5px); z-index: 9999;
+    display: flex; justify-content: center; align-items: center;
+    visibility: hidden; opacity: 0; transition: all 0.3s;
+}
+.modal-overlay.show { visibility: visible; opacity: 1; }
+.auth-card {
+    background: #fff; width: 85%; max-width: 350px;
+    padding: 30px; border-radius: 16px; text-align: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+.auth-input {
+    width: 100%; padding: 12px; margin: 20px 0;
+    font-size: 18px; text-align: center; letter-spacing: 2px;
+    border: 2px solid #ddd; border-radius: 8px;
+}
+.btn-verify {
+    width: 100%; padding: 12px; border: none; border-radius: 30px;
+    background: linear-gradient(90deg, #34C759, #20993c);
+    color: white; font-size: 16px; cursor: pointer; margin-bottom: 10px;
+}
+.btn-xhs-link {
+    display: block; width: 100%; padding: 12px 0;
+    color: #ff2442; text-decoration: none; font-size: 14px;
+}
+.shake { animation: shake 0.5s; }
+@keyframes shake { 0%, 100% {transform: translateX(0);} 25% {transform: translateX(-5px);} 75% {transform: translateX(5px);} }
         /* 基础重置与变量定义 */
         :root {
             --primary-green: #34C759;
@@ -1013,7 +1112,7 @@
                     <h3><i class="fas fa-comments"></i> 结果解读与关怀</h3>
                     
                     <div class="warm-message">
-                        <strong>无论分数如何，请一定记得，我们始终都在你身边。</strong> SCL-90 心理健康自评量表涵盖了情绪状态、思维模式、人际关系、生活习惯等多个维度，它就像一面温柔的镜子，能帮你更清晰地看见自己当下的心理状态。需要知道的是，量表得分仅仅是近期心理感受的投射。若某些因子得分较高，或许只是说明你最近在这些方面暂时感受到了压力或困扰，但这绝不等于你存在严重的问题。很多时候，短期的心理波动本就是生活的常态——可能是学习的节奏、工作的挑战，或是人际交往中的小插曲带来的暂时影响。
+                        <strong>无论分数如何，请一定记得，我们始终都在你身边。</strong> SCL-90 心理健康自评量表涵盖了情绪状态、思维模式、人际关系、生活习惯等多个维度，它就像一面温柔的镜子，能帮你更清晰地看见自己当下的心理状态。需要知道的是，量表得分仅仅是近期心理感受的投射。若某些因子得分较高，或许只是说明你最近在这些方面暂时感受到了压力或困扰，但这绝不等于你存在严重的问题。
                     </div>
                     
                     <div class="level-standards">
@@ -1079,7 +1178,7 @@
     </main>
     
     <footer>
-        <p>SCL-90症状自评量表 &copy; 2023 | 本工具基于Derogatis, L.R.编制的症状自评量表开发</p>
+        <p>SCL-90症状自评量表 &copy; 2026 | 本工具基于Derogatis, L.R.编制的症状自评量表开发</p>
         <p>注意：本测试结果仅供参考，不能替代专业医疗诊断。如有需要，请咨询专业心理健康服务人员。</p>
         <div class="footer-links">
             <a href="#" id="privacy-link">隐私政策</a>
@@ -1791,4 +1890,18 @@
         }
     </script>
 </body>
+<div class="modal-overlay" id="authModal">
+    <div class="auth-card">
+        <h2 style="margin-top:0; color:#333;">访问受限</h2>
+        <p style="color:#666; font-size:14px;">本量表为专业版，请输入兑换码解锁。</p>
+        
+        <input type="tel" id="redeemCode" class="auth-input" placeholder="请输入8位兑换码" maxlength="8">
+        
+        <button class="btn-verify" onclick="verifyRedeemCode()">立即验证</button>
+        
+        <a href="https://www.xiaohongshu.com" target="_blank" class="btn-xhs-link">
+            没有兑换码？去小红书获取 &gt;
+        </a>
+    </div>
+</div>
 </html>

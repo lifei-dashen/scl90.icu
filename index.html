@@ -8,150 +8,71 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     // ==========================================
-    // === SCL-90 最终版：设备级防重复验证系统 ===
+    // === SCL-90 终极版 (10位标准版) ===
     // ==========================================
 
-    const AUTH_CONFIG = {
-        SECRET_KEY: "MY_SCL90_SHOP_2026", // 必须与生成器一致
-        VALID_DAYS: 15, // 销售有效期：码生成后15天内有效，超过作废
+    const CONFIG = { 
+        KEY: "MY_SCL90_SHOP_2026", // 密钥
+        DAYS: 15 // 有效期15天
     };
 
-    document.addEventListener("DOMContentLoaded", function() {
-        checkLock();
+    // 1. 进场检查
+    document.addEventListener("DOMContentLoaded", () => {
+        let last = localStorage.getItem("scl_unlock_10"); // 用新key防止混淆
+        if(last && (new Date().getTime() - last < 86400000)) return; // 24小时内放行
+        
+        // 否则锁住
+        localStorage.removeItem("scl_unlock_10"); 
+        document.getElementById("authModal").classList.add("show");
+        document.getElementById("authModal").style.display = "flex";
     });
 
-    // 获取一年中的第几天
-    function getCurrentDayOfYear() {
-        const now = new Date();
-        const start = new Date(now.getFullYear(), 0, 0);
-        const diff = now - start;
-        const oneDay = 1000 * 60 * 60 * 24;
-        return Math.floor(diff / oneDay);
-    }
-
-    // 检查锁屏状态
-    function checkLock() {
-        const unlockTime = localStorage.getItem("scl90_unlock_time");
-        const modal = document.getElementById("authModal");
-
-        // 1. 检查是否有权限记录
-        if (unlockTime) {
-            const now = new Date().getTime();
-            const passed = (now - parseInt(unlockTime)) / (1000 * 60 * 60);
-            
-            // 2. 如果在24小时内，直接放行，无需弹窗
-            if (passed < 24) {
-                if(modal) modal.style.display = "none";
-                return;
-            }
-            
-            // 3. 超过24小时，清除当前权限，重新弹窗锁住
-            // 注意：我们只清除了“unlock_time”，没有清除“黑名单”
-            localStorage.removeItem("scl90_unlock_time");
-        }
-        
-        // 显示弹窗
-        if(modal) {
-            modal.style.display = "flex";
-            setTimeout(() => modal.classList.add("show"), 10);
-        }
-    }
-
-    // 验证逻辑
+    // 2. 验证按钮点击
     function verifyRedeemCode() {
-        const input = document.getElementById("redeemCode");
-        const code = input.value.trim();
+        let code = document.getElementById("redeemCode").value.trim();
+        if(code === "1992010600") return pass(code); // 后门
 
-        // 开发者测试后门
-        if (code === "12020000") { unlock(code); return; }
+        // A. 长度必须是10位
+        if(code.length !== 10) return alert("请输入10位兑换码");
 
-        // A. 基础格式验证
-        if (code.length !== 8) {
-            showError("兑换码格式应为8位数字"); return;
-        }
+        // B. 查黑名单 (防重复使用)
+        let used = JSON.parse(localStorage.getItem("scl_used_10")||"[]");
+        if(used.includes(code)) return alert("此码已使用过，请购买新码");
 
-        // B. 【核心】检查本地黑名单
-        // 读取浏览器里的“已用过的码”记录本
-        let usedHistory = JSON.parse(localStorage.getItem("scl90_blacklist") || "[]");
-        
-        if (usedHistory.includes(code)) {
-            // 如果记录本里有这个码，直接拒绝
-            showError("此兑换码已使用过，无法重复激活！请购买新码。");
-            return;
-        }
+        // C. 查有效期 (前3位是日期)
+        let day = parseInt(code.substring(0,3));
+        let now = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
+        let diff = now - day;
+        if(diff < -300) diff += 365; // 跨年修正
+        if(diff > CONFIG.DAYS) return alert("兑换码已过期失效");
 
-        // C. 检查日期有效期
-        const codeDay = parseInt(code.substring(0, 3));
-        const currentDay = getCurrentDayOfYear();
-        let diff = currentDay - codeDay;
-        if (diff < -300) diff = currentDay + 365 - codeDay; // 跨年处理
-
-        if (diff > AUTH_CONFIG.VALID_DAYS) {
-            showError("此兑换码已过期 (超过销售有效期)");
-            return;
-        }
-
-        // D. 签名算法验证
-        if (checkSignature(code)) {
-            unlock(code);
-        } else {
-            showError("兑换码无效，请核对");
-        }
-    }
-
-    // 签名校验算法
-    function checkSignature(code) {
-        const infoPart = code.substring(0, 4);
-        const signPart = code.substring(4, 8);
-        const secret = AUTH_CONFIG.SECRET_KEY;
-        
-        let str = infoPart + secret;
+        // D. 验签名 (前7位算签名 -> 对比后3位)
         let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            let char = str.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; 
-        }
-        let calculatedSign = Math.abs(hash).toString();
-        while (calculatedSign.length < 4) calculatedSign = "0" + calculatedSign;
+        let str = code.substring(0,7) + CONFIG.KEY;
+        for(let i=0; i<str.length; i++) hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        let sign = Math.abs(hash).toString();
+        while(sign.length < 3) sign = "0"+sign;
         
-        return calculatedSign.substring(calculatedSign.length - 4) === signPart;
-    }
-
-    // 解锁并记录黑名单
-    function unlock(validCode) {
-        alert("验证成功！您拥有24小时测试权限。");
-        
-        // 1. 记录解锁时间（用于24小时倒计时）
-        localStorage.setItem("scl90_unlock_time", new Date().getTime());
-        
-        // 2. 【核心】将这个码写入永久黑名单
-        if (validCode !== "12020000") {
-            let usedHistory = JSON.parse(localStorage.getItem("scl90_blacklist") || "[]");
-            // 如果名单里没有，就加进去
-            if (!usedHistory.includes(validCode)) {
-                usedHistory.push(validCode);
-                localStorage.setItem("scl90_blacklist", JSON.stringify(usedHistory));
-            }
-        }
-
-        // 3. 关闭弹窗
-        const modal = document.getElementById("authModal");
-        if(modal) {
-            modal.classList.remove("show");
-            setTimeout(() => modal.style.display = "none", 300);
+        // 比对
+        if(sign.substring(sign.length-3) === code.substring(7,10)) {
+            pass(code);
+        } else {
+            alert("兑换码错误，请核对");
         }
     }
 
-    function showError(msg) {
-        alert(msg);
-        const input = document.getElementById("redeemCode");
-        input.value = "";
-        const card = document.querySelector(".auth-card");
-        if(card) {
-            card.classList.add("shake");
-            setTimeout(() => card.classList.remove("shake"), 500);
+    // 3. 通行证
+    function pass(c) {
+        alert("验证成功！24小时内有效。");
+        localStorage.setItem("scl_unlock_10", new Date().getTime());
+        // 记入黑名单
+        if(c!=="1992010600") {
+            let u = JSON.parse(localStorage.getItem("scl_used_10")||"[]");
+            u.push(c);
+            localStorage.setItem("scl_used_10", JSON.stringify(u));
         }
+        document.getElementById("authModal").classList.remove("show");
+        setTimeout(() => document.getElementById("authModal").style.display = "none", 300);
     }
     // === 验证系统结束 ===
 </script>
@@ -1982,11 +1903,11 @@
             本量表为专业版，请输入兑换码解锁。
         </p>
         
-        <input type="tel" id="redeemCode" class="auth-input" placeholder="请输入8位兑换码" maxlength="8">
+        <input type="tel" id="redeemCode" class="auth-input" placeholder="请输入10位兑换码" maxlength="10">
         
         <button class="btn-verify" onclick="verifyRedeemCode()">立即验证</button>
         
-        <a href="https://www.xiaohongshu.com/user/profile/你的ID" target="_blank" class="btn-xhs-link">
+        <a href="https://xhslink.com/m/7OyPlajWTgu" target="_blank" class="btn-xhs-link">
             没有兑换码？去小红书获取 &gt;
         </a>
     </div>
